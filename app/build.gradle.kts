@@ -69,4 +69,6 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.0")
     implementation("androidx.compose.ui:ui-text-google-fonts:1.1.0")
 
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.1.0")
+
 }

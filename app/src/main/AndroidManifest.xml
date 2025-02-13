@@ -2,10 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Дозволи для камери та інтернету -->
+    <!-- Дозвіл на використання камери -->
     <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Дозвіл на читання файлів (тільки для Android 9 і нижче) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
+
+    <!-- Підтримка камери -->
     <uses-feature android:name="android.hardware.camera.any" />
-    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-feature android:name="android.hardware.camera.autofocus" />
 
     <application
         android:allowBackup="true"
@@ -17,6 +23,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DoodleDigits"
         tools:targetApi="31">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,10 +31,20 @@
             android:theme="@style/Theme.DoodleDigits">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-    </application>
 
+        <!-- FileProvider для роботи з файлами -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.example.doodledigits.provider"
+            android:grantUriPermissions="true"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
+
+    </application>
 </manifest>

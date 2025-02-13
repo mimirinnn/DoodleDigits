@@ -1,6 +1,8 @@
 package com.example.doodledigits.ui.screens
 
-import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Environment
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -9,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.example.doodledigits.ui.components.CameraCapture
@@ -16,15 +19,16 @@ import com.example.doodledigits.ui.components.CustomButton
 import com.example.doodledigits.ui.components.RecognizeNumber
 import com.example.doodledigits.utils.RequestCameraPermission
 import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 fun CameraScreen(navController: NavHostController) {
     RequestCameraPermission()
 
-    var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var capturedUri by remember { mutableStateOf<Uri?>(null) }
     var recognizedText by remember { mutableStateOf("Waiting for image...") }
     var captureRequested by remember { mutableStateOf(false) }
-
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold { contentPadding ->
@@ -50,35 +54,48 @@ fun CameraScreen(navController: NavHostController) {
 
             if (captureRequested) {
                 CameraCapture(
-                    onImageCaptured = { bitmap ->
-                        capturedBitmap = bitmap
+                    onImageCaptured = { uri ->
+                        Log.d("CameraScreen", "Image captured: $uri")
                         captureRequested = false
-                        Log.d("CameraScreen", "Image captured successfully")
+                        capturedUri = uri
 
-                        if (bitmap == null) {
-                            Log.e("CameraScreen", "Bitmap is null, cannot process image")
-                        } else {
-                            Log.d("CameraScreen", "Bitmap is not null, starting recognition")
+                        val file = File(
+                            context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+                            "captured_photo.jpg"
+                        )
 
-                            // Викликаємо RecognizeNumber() у корутині
+                        if (file.exists()) {
+                            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
                             coroutineScope.launch {
+                                Log.d("CameraScreen", "Starting ML Kit recognition...")
                                 recognizedText = RecognizeNumber(bitmap)
-                                Log.d("CameraScreen", "ML Kit returned: $recognizedText")
+                                Log.d("CameraScreen", "Recognition result: $recognizedText")
                             }
+                        } else {
+                            Log.e("CameraScreen", "Captured file does not exist!")
                         }
-                    },
-                    onClick = { captureRequested = false }
+                    }
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            capturedBitmap?.let { bitmap ->
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Captured Image",
-                    modifier = Modifier.size(200.dp)
+            capturedUri?.let { uri ->
+                val file = File(
+                    context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+                    "captured_photo.jpg"
                 )
+
+                if (file.exists()) {
+                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Captured Image",
+                        modifier = Modifier.size(200.dp)
+                    )
+                } else {
+                    Log.e("CameraScreen", "Image file not found at ${file.absolutePath}")
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

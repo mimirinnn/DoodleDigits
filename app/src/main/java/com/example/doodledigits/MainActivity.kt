@@ -10,6 +10,7 @@ import androidx.navigation.compose.*
 import com.example.doodledigits.ui.screens.WelcomeScreen
 import com.example.doodledigits.ui.screens.LoginScreen
 import com.example.doodledigits.ui.screens.ChildHomeScreen
+import com.example.doodledigits.ui.screens.CameraScreen
 import com.example.doodledigits.ui.theme.DoodleDigitsTheme
 import androidx.compose.runtime.Composable
 
@@ -37,5 +38,6 @@ fun AppNavigation() {
         composable("welcome") { WelcomeScreen(navController) }
         composable("login") { LoginScreen(navController) }
         composable("child_home") { ChildHomeScreen(navController) }
+        composable("camera") { CameraScreen(navController) }
     }
 }

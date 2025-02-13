@@ -10,15 +10,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 suspend fun RecognizeNumber(bitmap: Bitmap): String {
-    return withContext(Dispatchers.IO) { // Запускаємо в IO потоці
+    return withContext(Dispatchers.IO) { // Виконуємо у фоні
+        Log.d("MLKit", "RecognizeNumber() called") // Логування
+
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val image = InputImage.fromBitmap(bitmap, 0)
 
         try {
-            val result = recognizer.process(image).await() // Чекаємо результат
+            val result = recognizer.process(image).await() // Виконуємо очікування
             val detectedText = result.text.trim()
-            Log.d("MLKit", "Recognized text: $detectedText")
-            detectedText
+            Log.d("MLKit", "Recognized text: $detectedText") // Лог успішного розпізнавання
+            if (detectedText.isEmpty()) "No text detected" else detectedText
         } catch (e: Exception) {
             Log.e("MLKit", "Recognition failed", e)
             "Recognition failed"

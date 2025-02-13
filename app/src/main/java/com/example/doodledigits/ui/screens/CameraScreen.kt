@@ -19,7 +19,6 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun CameraScreen(navController: NavHostController) {
-    // Запит дозволу на камеру
     RequestCameraPermission()
 
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -56,9 +55,16 @@ fun CameraScreen(navController: NavHostController) {
                         captureRequested = false
                         Log.d("CameraScreen", "Image captured successfully")
 
-                        coroutineScope.launch {
-                            recognizedText = RecognizeNumber(bitmap)
-                            Log.d("CameraScreen", "ML Kit returned: $recognizedText")
+                        if (bitmap == null) {
+                            Log.e("CameraScreen", "Bitmap is null, cannot process image")
+                        } else {
+                            Log.d("CameraScreen", "Bitmap is not null, starting recognition")
+
+                            // Викликаємо RecognizeNumber() у корутині
+                            coroutineScope.launch {
+                                recognizedText = RecognizeNumber(bitmap)
+                                Log.d("CameraScreen", "ML Kit returned: $recognizedText")
+                            }
                         }
                     },
                     onClick = { captureRequested = false }

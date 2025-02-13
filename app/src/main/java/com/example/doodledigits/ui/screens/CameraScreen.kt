@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.example.doodledigits.ui.components.CameraCapture
 import com.example.doodledigits.ui.components.CustomButton
+import com.example.doodledigits.ui.components.RecognizeNumber
 import com.example.doodledigits.utils.RequestCameraPermission
 
 @Composable
@@ -21,6 +22,7 @@ fun CameraScreen(navController: NavHostController) {
     RequestCameraPermission()
 
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var recognizedText by remember { mutableStateOf("Waiting for image...") }
     var captureRequested by remember { mutableStateOf(false) }
 
     Scaffold { contentPadding ->
@@ -50,6 +52,10 @@ fun CameraScreen(navController: NavHostController) {
                         capturedBitmap = bitmap
                         captureRequested = false
                         Log.d("CameraScreen", "Image captured successfully")
+
+                        RecognizeNumber(bitmap) { result ->
+                            recognizedText = result
+                        }
                     },
                     onClick = { captureRequested = false }
                 )
@@ -64,6 +70,13 @@ fun CameraScreen(navController: NavHostController) {
                     modifier = Modifier.size(200.dp)
                 )
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Recognized: $recognizedText",
+                style = MaterialTheme.typography.bodyLarge
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 

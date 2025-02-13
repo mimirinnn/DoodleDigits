@@ -15,7 +15,6 @@ import com.example.doodledigits.ui.components.CameraCapture
 import com.example.doodledigits.ui.components.CustomButton
 import com.example.doodledigits.ui.components.RecognizeNumber
 import com.example.doodledigits.utils.RequestCameraPermission
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Composable
@@ -57,10 +56,9 @@ fun CameraScreen(navController: NavHostController) {
                         captureRequested = false
                         Log.d("CameraScreen", "Image captured successfully")
 
-                        coroutineScope.launch(Dispatchers.IO) {
-                            RecognizeNumber(bitmap) { result ->
-                                recognizedText = result  // Оновлюємо значення
-                            }
+                        coroutineScope.launch {
+                            recognizedText = RecognizeNumber(bitmap)
+                            Log.d("CameraScreen", "ML Kit returned: $recognizedText")
                         }
                     },
                     onClick = { captureRequested = false }

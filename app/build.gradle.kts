@@ -93,7 +93,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-text-google-fonts:1.1.0")
     implementation ("com.google.mlkit:text-recognition:16.0.0")
     implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.6.4")
-    implementation("org.tensorflow:tensorflow-lite:2.9.0")
+    implementation("org.tensorflow:tensorflow-lite:2.12.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.3")
     implementation("org.tensorflow:tensorflow-lite-metadata:0.4.3")
 

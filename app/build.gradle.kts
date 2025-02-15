@@ -31,7 +31,8 @@ android {
         }
     }
     aaptOptions {
-        noCompress("tflite")
+        noCompress ("tflite")
+        noCompress ("lite")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

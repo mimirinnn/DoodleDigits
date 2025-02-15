@@ -13,14 +13,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.example.doodledigits.ml.DigitClassifier
 import com.example.doodledigits.ui.components.CameraCapture
 import com.example.doodledigits.ui.components.CustomButton
 import com.example.doodledigits.ui.components.RecognizeNumber
 import com.example.doodledigits.utils.RequestCameraPermission
 import kotlinx.coroutines.launch
 import java.io.File
-import com.example.doodledigits.ml.DigitClassifier
-
 
 @Composable
 fun CameraScreen(navController: NavHostController) {
@@ -28,6 +27,7 @@ fun CameraScreen(navController: NavHostController) {
 
     var capturedUri by remember { mutableStateOf<Uri?>(null) }
     var capturedFilePath by remember { mutableStateOf<String?>(null) }
+    var processedBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var recognizedText by remember { mutableStateOf("Waiting for image...") }
     var captureRequested by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -46,14 +46,16 @@ fun CameraScreen(navController: NavHostController) {
                 text = "Take a photo of your number!",
                 style = MaterialTheme.typography.headlineLarge
             )
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            CustomButton(text = "Capture Image") {
-                Log.d("CameraScreen", "Capture button clicked")
-                captureRequested = true
+            Button(
+                onClick = {
+                    Log.d("CameraScreen", "Capture button clicked")
+                    captureRequested = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Capture Image")
             }
-
             if (captureRequested) {
                 CameraCapture(
                     onImageCaptured = { uri, filePath ->
@@ -67,11 +69,14 @@ fun CameraScreen(navController: NavHostController) {
                             val bitmap = BitmapFactory.decodeFile(file.absolutePath)
                             if (bitmap != null) {
                                 coroutineScope.launch {
-                                    Log.d("CameraScreen", "Fixing image rotation for preview...")
-                                    val correctedBitmap = DigitClassifier(context).fixImageOrientation(bitmap, filePath)
-
-                                    recognizedText = RecognizeNumber(correctedBitmap)
+                                    // Створюємо новий екземпляр DigitClassifier
+                                    val digitClassifier = DigitClassifier(context)
+                                    // Функція classifyDigit повертає пару (розпізнаний індекс, оброблене зображення)
+                                    val (recognizedDigit, procBitmap) = digitClassifier.classifyDigit(bitmap, filePath)
+                                    recognizedText = recognizedDigit.toString()
+                                    processedBitmap = procBitmap
                                     Log.d("CameraScreen", "Recognition result: $recognizedText")
+                                    digitClassifier.close()
                                 }
                             } else {
                                 Log.e("CameraScreen", "Bitmap is null, image might be corrupted.")
@@ -86,42 +91,27 @@ fun CameraScreen(navController: NavHostController) {
                     onCaptureCompleted = { captureRequested = false }
                 )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            capturedFilePath?.let { path ->
-                val file = File(path)
-                if (file.exists()) {
-                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                    if (bitmap != null) {
-                        val correctedBitmap = DigitClassifier(context).fixImageOrientation(bitmap, path)  // Фіксуємо поворот
-                        Image(
-                            bitmap = correctedBitmap.asImageBitmap(),
-                            contentDescription = "Captured Image",
-                            modifier = Modifier.size(200.dp)
-                        )
-                    } else {
-                        Log.e("CameraScreen", "Bitmap is null, image might be corrupted.")
-                    }
-                } else {
-                    Log.e("CameraScreen", "Warning: Image file is missing!")
-                }
+            // Відображення обробленого зображення для налагодження
+            processedBitmap?.let { bmp ->
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "Processed Image",
+                    modifier = Modifier.size(200.dp)
+                )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
             Text(
                 text = "Recognized: $recognizedText",
                 style = MaterialTheme.typography.bodyLarge
             )
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            CustomButton(text = "Back") {
-                navController.navigate("child_home")
+            Button(
+                onClick = { navController.navigate("child_home") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Back")
             }
         }
     }
 }
-
-

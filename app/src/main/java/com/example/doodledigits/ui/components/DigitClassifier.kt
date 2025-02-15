@@ -3,21 +3,28 @@ package com.example.doodledigits.ml
 import android.content.Context
 import android.graphics.*
 import android.media.ExifInterface
+import android.renderscript.Allocation
+import android.renderscript.Element
+import android.renderscript.RenderScript
+import android.renderscript.ScriptIntrinsicBlur
 import android.util.Log
 import org.tensorflow.lite.Interpreter
-import java.io.File
 import java.io.FileInputStream
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.atan2
+import kotlin.math.roundToInt
 
 class DigitClassifier(private val context: Context) {
     private var interpreter: Interpreter? = null
 
     init {
         try {
-            interpreter = Interpreter(loadModelFile())
+            interpreter = Interpreter(loadModelFile(), Interpreter.Options().apply {
+                setNumThreads(4)
+            })
             Log.d("DigitClassifier", "✅ TFLite Model Loaded Successfully!")
         } catch (e: Exception) {
             Log.e("DigitClassifier", "❌ Error loading model", e)
@@ -31,16 +38,23 @@ class DigitClassifier(private val context: Context) {
         return fileChannel.map(FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
     }
 
+    /**
+     * Основна функція класифікації.
+     * Повертає пару: розпізнаний індекс та оброблене зображення.
+     */
     fun classifyDigit(bitmap: Bitmap, imagePath: String): Pair<Int, Bitmap> {
         Log.d("DigitClassifier", "📸 Received image for classification (Size: ${bitmap.width}x${bitmap.height})")
 
-        // 🔄 Виправлення орієнтації
+        // 1. Виправлення орієнтації
         val correctedBitmap = fixImageOrientation(bitmap, imagePath)
 
-        // 🔧 Передобробка (отримуємо також оброблене зображення)
-        val processedBitmap = preprocessImage(correctedBitmap)
+        // 2. Дескейвінг (вирівнювання) зображення
+        val deskewedBitmap = deskewImage(correctedBitmap)
 
-        // 🎯 Перетворення в ByteBuffer
+        // 3. Передобробка: бінаризація, обрізання білого простору, додавання паддінгу
+        val processedBitmap = preprocessImage(deskewedBitmap)
+
+        // 4. Перетворення у ByteBuffer для моделі
         val byteBuffer = convertBitmapToByteBuffer(processedBitmap)
 
         val output = Array(1) { FloatArray(10) }
@@ -51,26 +65,35 @@ class DigitClassifier(private val context: Context) {
         Log.d("DigitClassifier", "📊 Model output: ${output[0].joinToString()}")
         Log.d("DigitClassifier", "🎯 Recognized digit: $maxIndex")
 
-        // 🔹 Повертаємо результат і оброблене зображення для відображення
         return Pair(maxIndex, processedBitmap)
     }
 
     /**
-     * 🔄 **Виправлення орієнтації**
+     * Виправлення орієнтації зображення за EXIF-даними.
      */
     fun fixImageOrientation(bitmap: Bitmap, imagePath: String): Bitmap {
         return try {
             val exif = ExifInterface(imagePath)
             val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
-
             val matrix = Matrix()
             when (orientation) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-                ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-                ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-                else -> return bitmap
+                ExifInterface.ORIENTATION_ROTATE_90 -> {
+                    Log.d("DigitClassifier", "🔄 Rotating image by 90°")
+                    matrix.postRotate(90f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_180 -> {
+                    Log.d("DigitClassifier", "🔄 Rotating image by 180°")
+                    matrix.postRotate(180f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_270 -> {
+                    Log.d("DigitClassifier", "🔄 Rotating image by 270°")
+                    matrix.postRotate(270f)
+                }
+                else -> {
+                    Log.d("DigitClassifier", "✅ No rotation needed")
+                    return bitmap
+                }
             }
-
             Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
         } catch (e: Exception) {
             Log.e("DigitClassifier", "❌ Error fixing image orientation", e)
@@ -78,34 +101,74 @@ class DigitClassifier(private val context: Context) {
         }
     }
 
-    private fun preprocessImage(bitmap: Bitmap): Bitmap {
-        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 28, 28, true)
+    /**
+     * Дескейвінг зображення: обчислення кута нахилу та поворот зображення для вирівнювання.
+     */
+    private fun deskewImage(bitmap: Bitmap): Bitmap {
+        // Обчислюємо моменти зображення
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        // 1️⃣ **Бінаризація (Otsu Thresholding)**
-        val binarizedBitmap = otsuThreshold(resizedBitmap)
+        // Обчислюємо центр мас та нахил (це спрощена версія, яка може потребувати додаткової оптимізації)
+        var sumX = 0.0
+        var sumY = 0.0
+        var count = 0
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                if (pixels[y * width + x] == Color.BLACK) {
+                    sumX += x
+                    sumY += y
+                    count++
+                }
+            }
+        }
+        if (count == 0) return bitmap
 
-        // 2️⃣ **Обрізання зайвого білого простору**
-        val croppedBitmap = cropDigit(binarizedBitmap)
+        val centerX = sumX / count
+        val centerY = sumY / count
 
-        // 3️⃣ **Додавання відступів та масштабування**
-        val finalBitmap = addPadding(croppedBitmap)
+        // Обчислення ковариації для нахилу (це спрощено)
+        var numerator = 0.0
+        var denominator = 0.0
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                if (pixels[y * width + x] == Color.BLACK) {
+                    numerator += (x - centerX) * (y - centerY)
+                    denominator += (x - centerX) * (x - centerX)
+                }
+            }
+        }
+        val angle = if (denominator != 0.0) atan2(numerator, denominator) else 0.0
+        Log.d("DigitClassifier", "🧭 Deskew angle (radians): $angle")
 
-        Log.d("DigitClassifier", "✅ Image preprocessing completed!")
-        return finalBitmap
+        val matrix = Matrix()
+        matrix.postRotate((-angle * 180 / Math.PI).toFloat())
+        return Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true)
     }
 
     /**
-     * 📌 **Otsu Thresholding для кращої бінаризації**
+     * Передобробка зображення: бінаризація через Otsu Thresholding та центрування цифри.
+     */
+    private fun preprocessImage(bitmap: Bitmap): Bitmap {
+        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 28, 28, true)
+        val binarizedBitmap = otsuThreshold(resizedBitmap)
+        val centeredBitmap = centerDigit(binarizedBitmap)
+        Log.d("DigitClassifier", "✅ Image preprocessing completed!")
+        return centeredBitmap
+    }
+
+    /**
+     * Otsu Thresholding для бінаризації.
      */
     private fun otsuThreshold(bitmap: Bitmap): Bitmap {
         val width = bitmap.width
         val height = bitmap.height
-        val thresholdedBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-
+        val thresholdedBitmap = Bitmap.createBitmap(width, height, bitmap.config ?: Bitmap.Config.ARGB_8888)
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        // Otsu Threshold
         val histogram = IntArray(256)
         for (pixel in pixels) {
             val gray = (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3
@@ -117,22 +180,19 @@ class DigitClassifier(private val context: Context) {
 
         var sumB = 0
         var wB = 0
-        var wF = 0
+        var wF: Int
         var maxVariance = 0.0
         var threshold = 0
 
         for (t in 0..255) {
             wB += histogram[t]
             if (wB == 0) continue
-
             wF = width * height - wB
             if (wF == 0) break
-
             sumB += t * histogram[t]
             val mB = sumB.toDouble() / wB
             val mF = (sum - sumB).toDouble() / wF
             val variance = wB * wF * (mB - mF) * (mB - mF)
-
             if (variance > maxVariance) {
                 maxVariance = variance
                 threshold = t
@@ -143,15 +203,14 @@ class DigitClassifier(private val context: Context) {
             val gray = (Color.red(pixels[i]) + Color.green(pixels[i]) + Color.blue(pixels[i])) / 3
             pixels[i] = if (gray > threshold) Color.WHITE else Color.BLACK
         }
-
         thresholdedBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
         return thresholdedBitmap
     }
 
     /**
-     * 📌 **Обрізання зайвого білого простору**
+     * Центрування цифри в зображенні 28x28.
      */
-    private fun cropDigit(bitmap: Bitmap): Bitmap {
+    private fun centerDigit(bitmap: Bitmap): Bitmap {
         val width = bitmap.width
         val height = bitmap.height
         val pixels = IntArray(width * height)
@@ -173,41 +232,44 @@ class DigitClassifier(private val context: Context) {
             }
         }
 
-        return if (minX < maxX && minY < maxY) {
-            Bitmap.createBitmap(bitmap, minX, minY, maxX - minX, maxY - minY)
+        val digitWidth = maxX - minX + 1
+        val digitHeight = maxY - minY + 1
+
+        val cropped = if (digitWidth > 0 && digitHeight > 0) {
+            Bitmap.createBitmap(bitmap, minX, minY, digitWidth, digitHeight)
         } else {
             bitmap
         }
+
+        val centeredBitmap = Bitmap.createBitmap(28, 28, bitmap.config ?: Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(centeredBitmap)
+        canvas.drawColor(Color.WHITE)
+        val offsetX = (28 - cropped.width) / 2f
+        val offsetY = (28 - cropped.height) / 2f
+        canvas.drawBitmap(cropped, offsetX, offsetY, null)
+        return centeredBitmap
     }
 
     /**
-     * 📌 **Додавання відступів і масштабування**
+     * Перетворення обробленого зображення у ByteBuffer.
+     * Нормалізація: чорний піксель (цифра) → 1.0f, білий (фон) → 0.0f.
      */
-    private fun addPadding(bitmap: Bitmap): Bitmap {
-        val paddedSize = 32
-        val result = Bitmap.createBitmap(paddedSize, paddedSize, Bitmap.Config.ARGB_8888)
-
-        val canvas = Canvas(result)
-        canvas.drawColor(Color.WHITE)
-        val left = (paddedSize - bitmap.width) / 2
-        val top = (paddedSize - bitmap.height) / 2
-        canvas.drawBitmap(bitmap, left.toFloat(), top.toFloat(), null)
-
-        return Bitmap.createScaledBitmap(result, 28, 28, true)
-    }
-
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
         val byteBuffer = ByteBuffer.allocateDirect(4 * 1 * 28 * 28)
         byteBuffer.order(ByteOrder.nativeOrder())
 
+        Log.d("DigitClassifier", "🎨 Converting image to ByteBuffer...")
         for (y in 0 until 28) {
             for (x in 0 until 28) {
                 val pixel = bitmap.getPixel(x, y)
-                val grayscale = (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3
-                val normalizedPixel = 1 - (grayscale / 255.0f)
-                byteBuffer.putFloat(normalizedPixel.toFloat())
+                // Обчислюємо середнє значення (грейскейл)
+                val gray = (Color.red(pixel) * 0.3f + Color.green(pixel) * 0.59f + Color.blue(pixel) * 0.11f)
+                // Нормалізація: фон (білий) → 0, цифра (чорний) → 1
+                val normalizedPixel = 1.0f - (gray / 255.0f)
+                byteBuffer.putFloat(normalizedPixel)
             }
         }
+        Log.d("DigitClassifier", "✅ Image successfully converted to ByteBuffer")
         return byteBuffer
     }
 

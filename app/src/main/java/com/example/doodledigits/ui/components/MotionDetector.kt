@@ -14,7 +14,7 @@ class MotionDetector(context: Context) {
     var movementDetected by mutableStateOf(false)
         private set
 
-    private val movementThreshold = 0.2f // Чим вище значення, тим більше допускається руху
+    private val movementThreshold = 1.2f // Чим вище значення, тим більше допускається руху
     private var lastAcceleration = 0f
 
     private val sensorListener = object : SensorEventListener {

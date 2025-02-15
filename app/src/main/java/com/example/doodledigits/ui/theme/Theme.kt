@@ -7,6 +7,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import com.example.doodledigits.datastore.UserPreferences
 
 // Пастельні кольори
 val PastelBlue = Color(0xFFA7C7E7)
@@ -45,19 +48,15 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun DoodleDigitsTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
+    val context = LocalContext.current
+    val userPreferences = remember { UserPreferences(context) }
 
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    // Отримуємо вибрану тему з DataStore
+    val isDarkTheme = userPreferences.themeMode.collectAsState(initial = isSystemInDarkTheme())
+
+    val colorScheme = if (isDarkTheme.value) darkColorScheme() else lightColorScheme()
 
     MaterialTheme(
         colorScheme = colorScheme,

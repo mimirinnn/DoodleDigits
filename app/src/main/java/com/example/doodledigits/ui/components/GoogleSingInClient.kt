@@ -13,6 +13,11 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.tasks.await
 import kotlin.coroutines.cancellation.CancellationException
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserProfileChangeRequest
+import android.net.Uri
+
+
 
 
 class GoogleSingInClient(
@@ -110,5 +115,37 @@ class GoogleSingInClient(
         )
         firebaseAuth.signOut()
     }
+
+    suspend fun deleteAccount(): Boolean {
+        return try {
+            val user = firebaseAuth.currentUser
+            user?.delete()?.await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    fun getUser(): FirebaseUser? {
+        return firebaseAuth.currentUser
+    }
+
+    suspend fun updateProfile(newName: String, newPhotoUrl: String?): Boolean {
+        return try {
+            val user = firebaseAuth.currentUser
+            val profileUpdates = UserProfileChangeRequest.Builder()
+                .setDisplayName(newName)
+                .setPhotoUri(newPhotoUrl?.let { Uri.parse(it) })
+                .build()
+
+            user?.updateProfile(profileUpdates)?.await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
 
 }

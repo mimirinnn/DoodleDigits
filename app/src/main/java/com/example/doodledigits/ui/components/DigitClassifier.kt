@@ -44,6 +44,8 @@ class DigitClassifier(private val context: Context) {
         // 3. Otsu Threshold (цифра → біла, фон → чорний)
         val binarizedBitmap = otsuThreshold(grayBitmap)
 
+
+
         // 4. Видаляємо дрібні компоненти (залишаємо найбільшу білу зону)
         val largestCompBitmap = removeSmallComponents(binarizedBitmap)
 
@@ -64,7 +66,10 @@ class DigitClassifier(private val context: Context) {
 
         // 10. Проганяємо через модель
         val output = Array(1) { FloatArray(10) }
+
         interpreter?.run(byteBuffer, output)
+
+        Log.d("DigitClassifier", "Model output: ${output[0].joinToString()}")
 
         val maxIndex = output[0].indices.maxByOrNull { output[0][it] } ?: -1
         Log.d("DigitClassifier", "📊 Model output: ${output[0].joinToString()}")
@@ -446,6 +451,7 @@ class DigitClassifier(private val context: Context) {
             for (x in 0 until 28) {
                 val pixel = bitmap.getPixel(x, y)
                 val gray = (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3
+                Log.d("PixelCheck", "[$x,$y] = $gray")
                 val normalized = gray / 255.0f
                 byteBuffer.putFloat(normalized)
             }

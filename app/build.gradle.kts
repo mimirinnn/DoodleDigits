@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.doodledigits"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -50,6 +50,7 @@ android {
 }
 
 dependencies {
+
     // Import the Firebase BoM
     implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
 
@@ -93,9 +94,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-text-google-fonts:1.1.0")
     implementation ("com.google.mlkit:text-recognition:16.0.0")
     implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.6.4")
-    implementation("org.tensorflow:tensorflow-lite:2.12.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.3")
-    implementation("org.tensorflow:tensorflow-lite-metadata:0.4.3")
+    implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.support)
+    implementation(libs.tensorflow.lite.metadata)
 
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)

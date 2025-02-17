@@ -444,7 +444,7 @@ class DigitClassifier(private val context: Context) {
 
     // 9. Перетворення у ByteBuffer
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
-        val byteBuffer = ByteBuffer.allocateDirect(4 * 1 * 28 * 28)
+        val byteBuffer = ByteBuffer.allocateDirect(1 * 28 * 28 * 4)
         byteBuffer.order(ByteOrder.nativeOrder())
 
         for (y in 0 until 28) {

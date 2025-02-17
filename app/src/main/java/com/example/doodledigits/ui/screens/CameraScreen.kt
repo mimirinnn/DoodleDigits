@@ -40,6 +40,7 @@ fun CameraScreen(navController: NavHostController) {
 
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
+    val userId = auth.currentUser?.uid
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -59,22 +60,120 @@ fun CameraScreen(navController: NavHostController) {
     val motionDetector = remember { MotionDetector(context) }
     var showMotionWarning by remember { mutableStateOf(false) }
 
-    fun saveProgressToFirestore(digit: Int, recognized: Boolean, skipped: Boolean) {
-        val userId = auth.currentUser?.uid ?: return // Отримуємо ідентифікатор користувача
+    fun ensureUserExists(userId: String, onComplete: () -> Unit) {
+        val userDocRef = db.collection("progress_tracking").document(userId)
+        val digitsCollectionRef = userDocRef.collection("digits")
+
+        userDocRef.get().addOnSuccessListener { document ->
+            if (!document.exists()) {
+                Log.d("Firestore", "🚀 Creating user document and digits collection for $userId...")
+
+                val userData = hashMapOf(
+                    "created_at" to Date().time
+                )
+
+                userDocRef.set(userData)
+                    .addOnSuccessListener {
+                        Log.d("Firestore", "✅ User document created!")
+
+                        // **СТВОРЮЄМО digits ТІЛЬКИ ПІСЛЯ ТОГО, ЯК СТВОРИВСЯ ЮЗЕР**
+                        val initialEntry = hashMapOf(
+                            "digit" to -1,  // Заглушка
+                            "timestamp" to Date().time,
+                            "recognized" to false,
+                            "skipped" to false
+                        )
+
+                        digitsCollectionRef.add(initialEntry)
+                            .addOnSuccessListener {
+                                Log.d("Firestore", "✅ Initial entry in digits created!")
+                                onComplete()
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("Firestore", "❌ Failed to create initial entry in digits", e)
+                            }
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("Firestore", "❌ Error creating user doc", e)
+                    }
+            } else {
+                // Якщо юзер вже є, перевіряємо, чи `digits` існує
+                digitsCollectionRef.get()
+                    .addOnSuccessListener { documents ->
+                        if (documents.isEmpty) {
+                            Log.d("Firestore", "⚠️ No digits collection found! Creating it now...")
+
+                            val initialEntry = hashMapOf(
+                                "digit" to -1,
+                                "timestamp" to Date().time,
+                                "recognized" to false,
+                                "skipped" to false
+                            )
+
+                            digitsCollectionRef.add(initialEntry)
+                                .addOnSuccessListener {
+                                    Log.d("Firestore", "✅ Initial entry in digits created!")
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e("Firestore", "❌ Failed to create initial entry in digits", e)
+                                }
+                        } else {
+                            Log.d("Firestore", "✅ digits collection already exists!")
+                        }
+                        onComplete()
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("Firestore", "❌ Failed to check digits collection existence", e)
+                    }
+            }
+        }.addOnFailureListener { e ->
+            Log.e("Firestore", "❌ Failed to check user existence", e)
+        }
+    }
+
+
+    fun saveProgressToFirestore(userId: String, digit: Int, recognized: Boolean, skipped: Boolean) {
+        val userDocRef = db.collection("progress_tracking").document(userId)
+        val digitsCollectionRef = userDocRef.collection("digits")
+
+        // Створюємо запис про цифру
         val progressData = hashMapOf(
             "digit" to digit,
-            "timestamp" to Date().time, // Поточний час у мілісекундах
+            "timestamp" to Date().time,
             "recognized" to recognized,
             "skipped" to skipped
         )
 
-        db.collection("progress_tracking")
-            .document(userId)
-            .collection("digits")
-            .add(progressData)
-            .addOnSuccessListener { Log.d("Firestore", "✅ Progress saved!") }
-            .addOnFailureListener { e -> Log.e("Firestore", "❌ Error saving progress", e) }
+        // Спочатку перевіряємо, чи `digits` існує
+        digitsCollectionRef.get()
+            .addOnSuccessListener { documents ->
+                if (documents.isEmpty) {
+                    Log.d("Firestore", "⚠️ No digits collection found! Creating it now...")
+
+                    // Створюємо початковий запис
+                    digitsCollectionRef.add(progressData)
+                        .addOnSuccessListener {
+                            Log.d("Firestore", "✅ Progress saved!")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("Firestore", "❌ Error saving progress", e)
+                        }
+                } else {
+                    // Додаємо звичайний запис у `digits`
+                    digitsCollectionRef.add(progressData)
+                        .addOnSuccessListener {
+                            Log.d("Firestore", "✅ Progress saved!")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("Firestore", "❌ Error saving progress", e)
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "❌ Failed to check digits collection existence", e)
+            }
     }
+
 
 
     LaunchedEffect(Unit) {
@@ -204,11 +303,19 @@ fun CameraScreen(navController: NavHostController) {
 
                                     if (recognizedDigit == currentTargetDigit) {
                                         recognizedText = "✅ Correct! $recognizedDigit"
-                                        saveProgressToFirestore(recognizedDigit, recognized = true, skipped = false)
+                                        userId?.let {
+                                            ensureUserExists(it) {
+                                                saveProgressToFirestore(userId, recognizedDigit, recognized = true, skipped = false)
+                                            }
+                                        }
                                         goToNextDigit()
                                     } else {
                                         recognizedText = "❌ Incorrect. Got: $recognizedDigit"
-                                        saveProgressToFirestore(currentTargetDigit, recognized = false, skipped = false)
+                                        userId?.let {
+                                            ensureUserExists(it) {
+                                                saveProgressToFirestore(userId, recognizedDigit, recognized = false, skipped = false)
+                                            }
+                                        }
                                     }
 
                                     digitClassifier.close()
@@ -248,7 +355,11 @@ fun CameraScreen(navController: NavHostController) {
 
             Row {
                 CustomButton(text = "Skip") {
-                    saveProgressToFirestore(currentTargetDigit, recognized = false, skipped = true)
+                    userId?.let {
+                        ensureUserExists(it) {
+                            saveProgressToFirestore(userId, currentTargetDigit, recognized = false, skipped = true)
+                        }
+                    }
                     goToNextDigit()
                     recognizedText = "Skipped to ${if (isRandomMode) shuffledDigits[currentDigitIndex] else targetDigits[currentDigitIndex]}"
                 }

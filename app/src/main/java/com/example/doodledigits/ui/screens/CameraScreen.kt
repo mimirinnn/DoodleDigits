@@ -24,6 +24,9 @@ import com.example.doodledigits.ui.components.TiltDetector
 import com.example.doodledigits.ui.components.MotionDetector
 import kotlinx.coroutines.delay
 import kotlin.random.Random
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.auth.FirebaseAuth
+import java.util.Date
 
 @Composable
 fun CameraScreen(navController: NavHostController) {
@@ -34,6 +37,9 @@ fun CameraScreen(navController: NavHostController) {
     var processedBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var recognizedText by remember { mutableStateOf("Waiting for image...") }
     var captureRequested by remember { mutableStateOf(false) }
+
+    val db = FirebaseFirestore.getInstance()
+    val auth = FirebaseAuth.getInstance()
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -52,6 +58,24 @@ fun CameraScreen(navController: NavHostController) {
     val tiltDetector = remember { TiltDetector(context) }
     val motionDetector = remember { MotionDetector(context) }
     var showMotionWarning by remember { mutableStateOf(false) }
+
+    fun saveProgressToFirestore(digit: Int, recognized: Boolean, skipped: Boolean) {
+        val userId = auth.currentUser?.uid ?: return // Отримуємо ідентифікатор користувача
+        val progressData = hashMapOf(
+            "digit" to digit,
+            "timestamp" to Date().time, // Поточний час у мілісекундах
+            "recognized" to recognized,
+            "skipped" to skipped
+        )
+
+        db.collection("progress_tracking")
+            .document(userId)
+            .collection("digits")
+            .add(progressData)
+            .addOnSuccessListener { Log.d("Firestore", "✅ Progress saved!") }
+            .addOnFailureListener { e -> Log.e("Firestore", "❌ Error saving progress", e) }
+    }
+
 
     LaunchedEffect(Unit) {
         tiltDetector.register()
@@ -180,9 +204,11 @@ fun CameraScreen(navController: NavHostController) {
 
                                     if (recognizedDigit == currentTargetDigit) {
                                         recognizedText = "✅ Correct! $recognizedDigit"
+                                        saveProgressToFirestore(recognizedDigit, recognized = true, skipped = false)
                                         goToNextDigit()
                                     } else {
                                         recognizedText = "❌ Incorrect. Got: $recognizedDigit"
+                                        saveProgressToFirestore(currentTargetDigit, recognized = false, skipped = false)
                                     }
 
                                     digitClassifier.close()
@@ -222,6 +248,7 @@ fun CameraScreen(navController: NavHostController) {
 
             Row {
                 CustomButton(text = "Skip") {
+                    saveProgressToFirestore(currentTargetDigit, recognized = false, skipped = true)
                     goToNextDigit()
                     recognizedText = "Skipped to ${if (isRandomMode) shuffledDigits[currentDigitIndex] else targetDigits[currentDigitIndex]}"
                 }
